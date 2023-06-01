@@ -1,0 +1,53 @@
+#' Function to calculate a confusion index from bootstrapped ee models
+#'
+#'@author Trevan Flynn
+#'
+#'@description Calculates a confusion index (CI) from the list of arrayImages from probCalc().
+#'first the function gets each array, then sorts from high to low and then takes
+#'the mean for each soil class. Then it calculates the CI where CI = 1 - (Pmax-Pmax-1).
+#'Please see Borrough et al., (1997) for details on CI.
+#'
+#'@param x Is a list of arrayImages from probCalc() function.
+#'
+#'@return Confusion index ee$Image.
+#'
+#'@section References:
+#'Burrough, P.A., Van Gaans, P.F.M., Hootsmans, R., (1997). Continuous classification in soil survey: spatial correlation, confusion and boundaries. Geoderma 77, 115–135. https://doi.org/10.1016/S0016-7061(97)00018-9.
+#'
+#'@example
+#'library(rgee)
+#'ee_Initiate()
+#'pred <- geeBoot(image = coStack, model = "rf", sampNum = 50, numberOfTrees = 100)
+#'probs <- probCalc(pred, coStack)
+#'ci <- ciCalc(probs)
+#'@export
+ciCalc = function(x){
+  
+  #make list to store image of each class (lists of lists)
+  arrayClss = list()
+  
+  #loop around classes
+  for(i in 1:length(err$getInfo()){
+    
+    #make function for each class
+    f1 = function(x) x$toArray(1)$arrayGet(c(i,0))
+    
+    #apply function
+    arrayClss[[i]] = lapply(x, f1)
+  }
+  
+  #function to sort and combine by mean
+  f2 = function(x) ee$ImageCollection(x)$
+      sort("probability", FALSE)$
+      mean()
+  
+  #apply function 2
+  sortClss = lapply(arrayClss, f2)
+
+  #calculate CI
+  ci = ee$Image$constant(1)$subtract(sortClss[[1]]$subtract(sortClss[[2]]))
+   
+  #return CI 
+  return(ci$rename("CI"))
+}
+
