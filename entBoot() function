@@ -1,0 +1,69 @@
+#'Spatial Downscaling of Categorical Data with Maximum Entropy
+#'
+#'@author Trevan Flynn
+#'
+#'@description 
+#'Spatial downscaling of categorical soil data into probability distribution of soil type. The algorithm is based on the dissever algorithm, except it is the probability of each soil class. Please see https://biodiversityinformatics.amnh.org/open_source/maxent/ for details. 
+#'Also, it is the same algorithm found in geeBoot() but takes the mean (not mode).
+#'
+#'@param  image An ee$Image with each band a covariate.
+#'@param  stype Character of either stratified ("s") or random ("r") sampling which defaults to "s".
+#'@param  sampNum An integer specifying the number of samples for each bootstrap. For "s", its the number of samples in each strata and for "r" is the total number of samples.
+#'@param  boot Is an integer number of bootstraps to conduct.
+#'@param  ... Additional parameters for Maxent, see Google docs for list of arguments. 
+#'
+#'@return A list containing the mean of the probability prediction, each model and each sample in the bootstrap.
+#'
+#'@section references:
+#'Brendan P. Malone, Alex B. McBratney, Budiman Minasny, Ichsani Wheeler, (2012). A general method for downscaling earth resource information. Computers & Geosciences, Volume 41, Pages 119-125. https://doi.org/10.1016/j.cageo.2011.08.021.
+#'P. Roudier, B.P. Malone, C.B. Hedley, B. Minasny, A.B. McBratney, (2017). Comparison of regression methods for spatial downscaling of soil organic carbon stocks maps. Computers and Electronics in Agriculture. Volume 142, Part A, Pages 91-100. https://doi.org/10.1016/j.compag.2017.08.021.
+#'
+#'@export
+
+entBoot = function(image, stype = 'r', sampNum = 100, boot = 10,...){
+  
+  #labels of lists (we want them all)
+  samps = list()
+  
+  #loop around
+  for(i in 1:boot) {
+    #stratified samples
+    if(stype == "s"){
+      samps[[i]] = image$stratifiedSample(
+        numPoints = sampNum,
+        classBand = label,
+        region = region,
+        geometries = T,
+        scale = scale)
+    }
+    #random sampling
+    else{
+      samps[[i]] = image$sample(
+        region = region,
+        scale = scale,
+        numPixels = sampNum,
+        geometries = T)
+    }
+  }
+  
+  #function to build classifier and traing
+  f1 = function(x) {ee$Classifier$amnhMaxent(list(...)))$
+          train(features = x,
+            classProperty = label,
+            inputProperties = colabs)}
+  mods = lapply(samps, f1)
+  
+  #predict each model over covariate
+  f2 = function(mods) image$classify(mods, "predictions")
+  preds = lapply(mods, f2)
+    
+  #get mode of the imageCollection
+  predModal = ee$ImageCollection(preds)$
+    mean()
+  
+  #names list for ease of use
+  return(list(predModal, mods, samps)%>%
+           setNames(c("predictions", "models", "samples")))
+}
+#' END
+---
