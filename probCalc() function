@@ -1,0 +1,26 @@
+#' Calculate probabilities for each class in bootstrapped ee models
+#'
+#'@author Trevan Flynn
+#'
+#'@description Calculate the average probability of each class from bootstrapped GEE models.
+#'This function is meant to be sequential with geeBoot().
+#'@param models Is the resultfrom geeBoot().
+#'@param image Is the covariates (ee$Image) used in geeBoot().
+#'
+#'@return: a list containing arrayImages of each soil class
+
+probCalc = function(models, image){
+
+  #get models
+  x = models[["models"]]
+  
+  #set models to probability
+  f1 = function(x) {x$setOutputMode("MULTIPROBABILITY")}
+  pMods = lapply(x, f1)
+  
+  #create list of probs
+  f2 = function(x) {image$classify(x, "probability")$slice(0)}
+  pPreds = lapply(pMods, f2)
+  
+  return(pPreds)
+}
