@@ -20,7 +20,7 @@
 #'
 #'@export
 
-geeBoot = function(image, model = 'rf', sType = 'r', sampNum = 100, boot = 10,...){
+geeBoot = function(image, model = 'rf', stype = 'r', sampNum = 100, boot = 10,...){
   
   #labels of lists (we want them all)
   samps = list()
@@ -38,16 +38,14 @@ geeBoot = function(image, model = 'rf', sType = 'r', sampNum = 100, boot = 10,..
   if(model == "cart"){
           model = ee$Classifier$smileCart
   }
-  if(model == "ent"){
-          model = ee$Classifier$amnhMaxent
-          }
   else{model = ee$Classifier$smileRandomForest
   }
   
   #loop around
   for(i in 1:boot) {
+  
     #stratified samples
-    if(sType == "s"){
+    if(stype == "s"){
       samps[[i]] = image$stratifiedSample(
         numPoints = sampNum,
         classBand = label,
