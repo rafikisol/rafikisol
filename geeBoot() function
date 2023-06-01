@@ -4,8 +4,9 @@
 #'@author Trevan Flynn
 #'
 #'@description Spatial downscaling of categorical soil data with GEE and R through bootstrapping. Algorithms come from SMILE (Statistical Machine Intelligence and Learning Engine) and please refer to their documentation
-#'https://haifengl.github.io/. Google Earth Engine allows for parallel processing and therefore, this algorithm is useful for large areas and fine resolution. Many do not have the ability to map at a fine resolution and existing maps are too coarse
-#'for subsistance land-use management. This algorithm allows for useable maps from existing maps with their accuracy and uncertainty (see impCalc(), probCalc() and ciCalc() functions).
+#'https://haifengl.github.io/. Google Earth Engine (GEE) allows for parallel processing and therefore, this algorithm is useful for large areas and fine resolution. Many do not have the ability to map at a fine resolution and existing maps are too coarse
+#'for subsistance land-use management. Thankfully, GEE uses parallel processing and one doesnt need an extremely efficient computer for this function. However, GEE does have a computational limit.
+#'This algorithm allows for useable maps from existing maps with their prediction accuracy and uncertainty (see impCalc(), probCalc() and ciCalc() functions).
 #'
 #'@param  image An ee$Image with each band a covariate resampled to the desired resolution and coarse scaled map to downscale (see example).
 #'@param  model  A character of a SMILE model, either naive bayes ("nb"), random forest ("rf"), gradient tree boost ("gtb"), support vector machines ("svm") or classification and regression tree ("cart"). 
@@ -22,7 +23,7 @@
 #'
 #'@export
 
-geeBoot = function(image, model = 'rf', stype = 'r', sampNum = 100, boot = 10,...){
+geeBoot = function(image, model = 'rf', stype = 'r', sampNum = 100, boot = 10, ...){
   
   #labels of lists (we want them all)
   samps = list()
@@ -66,14 +67,14 @@ geeBoot = function(image, model = 'rf', stype = 'r', sampNum = 100, boot = 10,..
     }
   }
   
-  #function to build classifier and traing
+  #function to build classifier and train on training data
   f1 = function(x) {model(...)$
           train(features = x,
             classProperty = label,
             inputProperties = colabs)}
   mods = lapply(samps, f1)
   
-  #predict each model over covariate
+  #predict each model over covariate image
   f2 = function(mods) image$classify(mods, "predictions")
   preds = lapply(mods, f2)
     
