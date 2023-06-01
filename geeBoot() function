@@ -6,7 +6,7 @@
 #'@description Spatial downscaling of categorical soil data with GEE and R through bootstrapping.
 #'
 #'@param  image An ee$Image with each band a covariate.
-#'@param  model  A character of a GEE model, either random forest ("rf"), gradient tree boost ("gtb"), support vector machines ("svm"), cart ("cart") or Maxent ("ent").
+#'@param  model  A character of a GEE model, either random forest ("rf"), gradient tree boost ("gtb"), support vector machines ("svm") or cart ("cart"). For maximum entropty see entBoot() function (same as dissever).
 #'@param  stype Character of either stratified ("s") or random ("r") sampling which defaults to "s".
 #'@param  sampNum An integer specifying the number of samples for each bootstrap. For "s", its the number of samples in each strata and for "r" is the total number of samples.
 #'@param  boot Is an integer number of bootstraps to conduct.
