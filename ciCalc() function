@@ -27,7 +27,7 @@ ciCalc = function(x){
   arrayClss = list()
   
   #loop around classes
-  for(i in 1:length(err$getInfo()){
+  for(i in 1:preds[[3]][[1]]$aggregate_max(label)$getInfo()){
     
     #make function for each class
     f1 = function(x) x$toArray(1)$arrayGet(c(i,0))
