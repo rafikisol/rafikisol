@@ -7,6 +7,8 @@
 catSpline(
   obj,
   class.var,
+  type = "class",
+  beta = 1,
   lam = 0.1,
   d = c(0, 5, 15, 30, 60, 100, 200),
   vlow = 0,
@@ -15,10 +17,15 @@ catSpline(
 )
 }
 \arguments{
-\item{obj}{is a data rom with columns of profile top of horizon and bottom of horizon
+\item{obj}{is a data frame with columns of profile top of horizon and bottom of horizon
 These columns must be named id, top and bottom respectively to be turned into a spc.f}
 
 \item{class.var}{is the name of the factor to run the spline.}
+
+\item{type}{type of output being "class" with the classification or "probs" with the raw probabilities.}
+
+\item{beta}{is how smooth the softmedian value is where lower is smoother and
+higher is closer to the true median.}
 
 \item{lam}{is the smoothing factor of the spline}
 
@@ -34,12 +41,10 @@ predictions in 1 cm increments (for figures) and the lookup table with probabili
 }
 \description{
 Function runs equal-area splines on the probabilities of soil categorical data
-and then classifies the soil class through a 1D nearest neighbor approach.
-Returns the same thing as the ea_spline function from the ithir package where most of the code
-was developed from (See references). The code is just a modified version but credit goes
-to Malone for translating from Matlab to R. However, unlike ea_spline, catSpline only uses
-discrete data and not continuous soil data. Additionally, it uses the median or modal
-when harmonising and not the mean.
+and then classifies the soil class through a 1D nearest neighbor approach. Based of
+the code written by Brendon Melone, catSpline is only for categorical data and
+uses the softmedian for the harmonised depths to maintain the differential qualities
+while aligning with the modal for categorical data.
 }
 \references{
 Malone, B.P., McBratney, A.B., Minasny, B., Laslett, G.M. (2009) Mapping continuous depth functions of soil carbon storage and available water capacity. Geoderma, 154(1-2): 138-152.

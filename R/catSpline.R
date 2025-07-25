@@ -3,17 +3,18 @@
 #'@author Trevan Flynn
 #'
 #'@description Function runs equal-area splines on the probabilities of soil categorical data
-#'and then classifies the soil class through a 1D nearest neighbor approach.
-#'Returns the same thing as the ea_spline function from the ithir package where most of the code
-#'was developed from (See references). The code is just a modified version but credit goes
-#'to Malone for translating from Matlab to R. However, unlike ea_spline, catSpline only uses
-#'discrete data and not continuous soil data. Additionally, it uses the median or modal
-#'when harmonising and not the mean.
+#'and then classifies the soil class through a 1D nearest neighbor approach. Based of
+#'the code written by Brendon Melone, catSpline is only for categorical data and
+#'uses the softmedian for the harmonised depths to maintain the differential qualities
+#'while aligning with the modal for categorical data.
 #'
-#'@param obj is a data rom with columns of profile top of horizon and bottom of horizon
+#'@param obj is a data frame with columns of profile top of horizon and bottom of horizon
 #'These columns must be named id, top and bottom respectively to be turned into a spc.f
 #'@param class.var is the name of the factor to run the spline.
+#'@param type type of output being "class" with the classification or "probs" with the raw probabilities.
 #'@param lam is the smoothing factor of the spline
+#'@param beta is how smooth the softmedian value is where lower is smoother and
+#'higher is closer to the true median.
 #'@param d is the depths to harmonise to.
 #'@param vlow is the lower boundary value (lowest = 0).
 #'@param vhigh is the higher boundary value (highest = 0).
@@ -26,9 +27,36 @@
 #'
 #'@export
 # Spline fitting for horizon data (Matlab Code converted to R by Brendan Malone)
-catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
+catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
 
+  #load aqp -- helps keep it consistant
   require(aqp)
+
+  #calculate differential median
+  softmedian <- function(x, beta = 1) {
+    # x: Numeric vector
+    # beta: Softness parameter (higher beta = closer to true median)
+    weights <- exp(-beta * abs(x - median(x)))
+    sum(weights * x) / sum(weights)
+  }
+
+  #1D nearest neibor classification
+  closest_value <- function(x, values) {
+    if(is.numeric(x)){
+      values[which.min(abs(values - x))]
+    }
+  }
+
+  second_value <- function(x, values) {
+    # Calculate absolute differences
+    diffs <- abs(values - x)
+
+    # Find the indices of the two smallest differences
+    closest_indices <- order(diffs)[1:2]
+
+    # Return the second closest value
+    x[closest_indices[2]]
+  }
 
   ###############################################################################
   #get prior probs
@@ -129,9 +157,9 @@ catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vl
       xd2<- dl[cj+1]-1
       if (nj>=xd1 & nj<=xd2)
       {xd2<- nj-1
-      yave[st,cj]<- stats::median(yfit[,xd1:xd2])}
+      yave[st,cj]<- softmedian(yfit[,xd1:xd2])}
       else
-      {yave[st,cj]<- stats::median(yfit[,xd1:xd2])}   #median of the spline at the specified depth intervals
+      {yave[st,cj]<- softmedian(yfit[,xd1:xd2])}   #median of the spline at the specified depth intervals
       yave[st,cj+1]<- max(v)#maximum soil depth
     }
 
@@ -243,7 +271,7 @@ catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vl
             p=phi+b1[its]*(xd-v[its])}
           }}
           yfit[k]=p
-          }
+        }
 
         if(nj < mxd)
         {yfit[,(nj+1):mxd]=NA}
@@ -262,11 +290,12 @@ catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vl
 
           if(nj>=xd1 & nj<=xd2){
             xd2<- nj-1
-            yave[st,cj]<- median(yfit[,xd1:xd2])
+            yave[st,cj]<- softmedian(yfit[,xd1:xd2])
           }
           else{
-            yave[st,cj]<- median(yfit[,xd1:xd2])}   #median of the spline at the specified depth intervals
-          yave[st,cj+1]<- median(v)} #maximum soil depth
+            yave[st,cj]<- softmedian(yfit[,xd1:xd2])} #softmedian of the spline at the specified depth intervals
+          yave[st,cj+1]<- max(v)#maximum soil depth
+        }
 
         ##Keep the original error of probabilities
         rmse <- sqrt(sum((t(y)-sbar)^2)/n)
@@ -305,52 +334,77 @@ catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vl
   yave[, "id"] <- as.factor(yave[, "id"])
   yave[, "soil_depth"] <- as.factor(yave[, "soil_depth"])
 
-  #1D nearest neibor classification
-  closest_value <- function(x, values) {
-    if(is.numeric(x)){
-      values[which.min(abs(values - x))]
-    }
-  }
-
-  # Identify numerical columns by name
   numColNames <- names(yave)[sapply(yave, is.numeric)]
+  uncert <- yave
 
-  # Apply closest_value to each numerical column
+  # Apply closest_value to each numerical column and get uncertainties
   for (col_name in numColNames) {
     yave[[col_name]] <- sapply(yave[[col_name]], closest_value,
                                values = lookup$post,
-                               USE.NAMES = FALSE) # Prevent sapply from adding names to vector elements
+                               USE.NAMES = FALSE)
   }
 
-  # Convert the numerical columns to factors based on lookup$Class
   for (col_name in numColNames) {
-    yave[[col_name]] <- factor(lookup$Class[match(yave[[col_name]], lookup$post)],
-                               levels = lookup$Class) # Explicitly set levels for consistent factors
+    # mapply returns vector or list; wrap in unlist() to flatten
+    result <- mapply(function(x, y) {
+      val <- tryCatch(abs(x - y), error = function(e) NA)
+      if (length(val) == 0 || is.null(val)) NA else val
+    }, x = uncert[[col_name]], y = yave[[col_name]])
+
+    uncert[[col_name]] <- result
   }
-  #dave
-  dave
-  #Match probabilities to class
-  closest_obvs <- sapply(dave$post, function(x) closest_value(as.numeric(x), lookup$post))
-  dave$Obvs <- as.factor(lookup$Class[match(closest_obvs, lookup$post)])
+  #if probabilities desired-------------------------------------------------------
+  if(type == "probs"){
+    # sset
+    sset<- as.data.frame(sset)
+    names(sset)<- c("rmse", "rmseiqr")
 
-  closest_pred <- sapply(dave$predicted, function(x) closest_value(x, lookup$post))
-  dave$Pred <- factor(lookup$Class[match(closest_pred, lookup$post)],
-                      levels = levels(dave$Obvs))
+    # save outputs
+    retval <- list(harmonised=yave,
+                   uncertainty = uncert,
+                   obs.preds=dave,
+                   splineFitError=sset ,
+                   var.1cm=t(m_fyfit))
+    return(retval)}
 
-  dave = dave[, c("id", "top", "bottom", "post", "predicted", "Obvs", "Pred")]
 
-  #1cm preds
-  names(m_fyfit) = gsub("V", "", names(m_fyfit))
+  if(type == "class"){
+    # Identify numerical columns by name
 
-  closest_pred <- sapply(m_fyfit, function(x) closest_value(x, lookup$post))
-  m_fyfit <- factor(lookup$Class[match(closest_pred, lookup$post)])
+    # Convert the numerical columns to factors based on lookup$Class
+    for (col_name in numColNames) {
+      yave[[col_name]] <- factor(lookup$Class[match(yave[[col_name]], lookup$post)],
+                                 levels = lookup$Class) # Explicitly set levels for consistent factors
+    }
+    #dave
+    dave
+    #Match probabilities to class
+    closest_obvs <- sapply(dave$post, function(x) closest_value(as.numeric(x), lookup$post))
+    dave$Obvs <- as.factor(lookup$Class[match(closest_obvs, lookup$post)])
 
-  #sset
-  sset<- as.data.frame(sset)
-  names(sset)<- c("rmse", "rmseiqr")
+    closest_pred <- sapply(dave$predicted, function(x) closest_value(x, lookup$post))
+    dave$Pred <- factor(lookup$Class[match(closest_pred, lookup$post)],
+                        levels = levels(dave$Obvs))
 
-  # save outputs
-  retval <- list(harmonised=yave, obs.preds = dave ,var.1cm= t(m_fyfit), lookup = lookup, Error=sset)
-  return(retval)
+    dave = dave[, c("id", "top", "bottom", "post", "predicted", "Obvs", "Pred")]
+
+    #1cm preds
+    names(m_fyfit) = gsub("V", "", names(m_fyfit))
+
+    closest_pred <- sapply(m_fyfit, function(x) closest_value(x, lookup$post))
+    m_fyfit <- factor(lookup$Class[match(closest_pred, lookup$post)])
+
+    #sset
+    sset<- as.data.frame(sset)
+    names(sset)<- c("rmse", "rmseiqr")
+
+    # save outputs
+    retval <- list(harmonised=yave,
+                   uncertainty = uncert,
+                   obs.preds = dave ,
+                   var.1cm= t(m_fyfit),
+                   lookup = lookup,
+                   Error=sset)
+    return(retval)
+  }
 }
-#END
