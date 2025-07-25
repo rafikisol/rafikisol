@@ -1,15 +1,17 @@
-#'@title Function for categorical splines\
+#'@title Function for categorical splines
 #'@name catSpline
 #'@author Trevan Flynn
 #'
-#'@description Function runs equal-area splines on the probabilities of soil categorical data.
+#'@description Function runs equal-area splines on the probabilities of soil categorical data
+#'and then classifies the soil class through a 1D nearest neighbor approach.
 #'Returns the same thing as the ea_spline function from the ithir package where most of the code
-#'was developed from (See references). However, the mean is replaced with the median because its closer to the modal.
-#'The final classification is performed by evalSpline, harmSpline and interpSpline. The restrictions
-#'are generally set to 0 and 1 as posterior probabilities fall within this range.
+#'was developed from (See references). The code is just a modified version but credit goes
+#'to Malone for translating from Matlab to R. However, unlike ea_spline, catSpline only uses
+#'discrete data and not continuous soil data. Additionally, it uses the median or modal
+#'when harmonising and not the mean.
 #'
-#'@param obj is a data from with columns of profile top of horizon and bottom of horizon
-#'These columns must be named id, top and bottom respectively to be turned into a spc.
+#'@param obj is a data rom with columns of profile top of horizon and bottom of horizon
+#'These columns must be named id, top and bottom respectively to be turned into a spc.f
 #'@param class.var is the name of the factor to run the spline.
 #'@param lam is the smoothing factor of the spline
 #'@param d is the depths to harmonise to.
@@ -24,12 +26,11 @@
 #'
 #'@export
 # Spline fitting for horizon data (Matlab Code converted to R by Brendan Malone)
-catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
+catSpline<- function(obj, class.var,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
 
   require(aqp)
 
   ###############################################################################
-  #get prior probs
   #get prior probs
   tab = table(obj[[class.var]])
   prob = tab/sum(tab)
@@ -40,18 +41,17 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
   lookup$post = as.numeric(lookup$post)
   names(lookup) = c(class.var, "post")
 
+  var.name = "post"
+
   obj = merge(obj, lookup, by = class.var)
 
-  var.name = "post"
+  aqp::depths(obj) = id ~ top + bottom
   ##############################################################################
   if (is(obj,"SoilProfileCollection") == TRUE){
     depthcols = obj@depthcols
     idcol = obj@idcol
     obj@horizons = obj@horizons[,c(idcol, depthcols, var.name)]
     d.dat<- as.data.frame(obj@horizons)}
-
-  if (is(obj,"data.frame") == TRUE){
-    d.dat<- as.data.frame(obj[,c(1:3,which(colnames(obj)==var.name))])}
 
   if (is(obj,"data.frame") == FALSE & is(obj,"SoilProfileCollection") == FALSE){
     stop("ERROR:: Data must be either class data.frame or SoilProfileCollection")}
@@ -80,12 +80,11 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
   dave$FID<- 0
   dave<- dave[0,]
 
-
-
   ## Fit splines profile by profile:
-  if (show.progress) pb <- txtProgressBar(min=0, max=length(sp_dat), style=3)
+  if (show.progress) pb <- utils::txtProgressBar(min=0, max=length(sp_dat), style=3)
   cnt<- 1
-  for(st in 1:length(sp_dat)) {
+
+  for(st in 1:length(sp_dat)){
     subs<-sp_dat[[st]]  # subset the profile required
     subs<-as.matrix(subs)
     mat_id[st,1]<- subs[1,1]
@@ -110,12 +109,12 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
     {dave[cnt:(cnt-1+nrow(subs)),1:4]<- subs
     dave[cnt:(cnt-1+nrow(subs)),5]<- y
     dave[cnt:(cnt-1+nrow(subs)),6]<- st
-    xfit<- as.matrix(t(c(1:mxd))) # spline will be interpolated onto these depths (1cm res)
+    xfit<- as.matrix(t(c(1:mxd))) #spline will be interpolated onto these depths (1cm res)
     nj<- max(v)
     if (nj > mxd)
     {nj<- mxd}
     yfit<- xfit
-    yfit[,1:nj]<- y   # values extrapolated onto yfit
+    yfit[,1:nj]<- y   #values extrapolated onto yfit
     if (nj < mxd)
     {yfit[,(nj+1):mxd]=-9999}
     m_fyfit[st,]<- yfit
@@ -124,27 +123,28 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
     # Averages of the spline at specified depths
     nd<- length(d)-1  # number of depth intervals
     dl<-d+1     #  increase d by 1
-    for (cj in 1:nd) {
+
+    for(cj in 1:nd){
       xd1<- dl[cj]
       xd2<- dl[cj+1]-1
       if (nj>=xd1 & nj<=xd2)
       {xd2<- nj-1
-      yave[st,cj]<- median(yfit[,xd1:xd2])}
+      yave[st,cj]<- stats::median(yfit[,xd1:xd2])}
       else
-      {yave[st,cj]<- median(yfit[,xd1:xd2])}   # average of the spline at the specified depth intervals
-      yave[st,cj+1]<- max(v)} #maximum soil depth
+      {yave[st,cj]<- stats::median(yfit[,xd1:xd2])}   #median of the spline at the specified depth intervals
+      yave[st,cj+1]<- max(v)#maximum soil depth
+    }
+
     cnt<- cnt+nrow(subs)
-    ##################################
+
     # error
     sset[st,1:2] <- 0
     }
-    # End of single observation profile routine
+
     ###############################################################################################################################################################
 
-    ## Start of routine for fitting spline to profiles with multiple observations
-
-    else  {
-      ###############################################################################################################################################################
+    ##Profile set up
+    else{
       dave[cnt:(cnt-1+nrow(subs)),1:4]<- subs
       dave[cnt:(cnt-1+nrow(subs)),6]<- st
       ## ESTIMATION OF SPLINE PARAMETERS
@@ -155,9 +155,11 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
 
       ## create the (n-1)x(n-1) matrix r; first create r with 1's on the diagonal and upper diagonal, and 0's elsewhere
       r <- matrix(0,ncol=nm1,nrow=nm1)
+
       for(dig in 1:nm1){
         r[dig,dig]<-1
       }
+
       for(udig in 1:nm1-1){
         r[udig,udig+1]<-1
       }
@@ -181,12 +183,15 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
 
       ## create the (n-1)xn matrix q
       q <- matrix(0,ncol=n,nrow=n)
-      for (dig in 1:n){
+
+      for(dig in 1:n){
         q[dig,dig]<- -1
       }
-      for (udig in 1:n-1){
+
+      for(udig in 1:n-1){
         q[udig,udig+1]<-1
       }
+
       q <- q[1:nm1,1:n]
       dim.mat <- matrix(q[],ncol=length(1:n),nrow=length(1:nm1))
 
@@ -198,36 +203,34 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
         ## identity matrix i
         ind <- diag(n)
 
-        ## create the matrix coefficent z
+        #create the matrix coefficent z
         pr.mat <- matrix(0,ncol=length(1:nm1),nrow=length(1:n))
         pr.mat[] <- 6*n*lam
         fdub <- pr.mat*t(dim.mat)%*%rinv
         z <- fdub%*%dim.mat+ind
 
-        ## solve for the fitted layer means
+        #solve for the fitted layer means
         sbar <- solve(z,t(y))
         dave[cnt:(cnt-1+nrow(subs)),5]<- sbar
         cnt<- cnt+nrow(subs)
 
 
-        ## calculate the fitted value at the knots
+        #calculate the fitted value at the knots
         b <- 6*rinv%*%dim.mat%*% sbar
         b0 <- rbind(0,b) # add a row to top = 0
         b1 <- rbind(b,0) # add a row to bottom = 0
         gamma <- (b1-b0) / t(2*delta)
         alfa <- sbar-b0 * t(delta) / 2-gamma * t(delta)^2/3
 
-        ## END ESTIMATION OF SPLINE PARAMETERS
         ###############################################################################################################################################################
-
-
-        ## fit the spline
-        xfit<- as.matrix(t(c(1:mxd))) ## spline will be interpolated onto these depths (1cm res)
+        #Spline fit
+        xfit<- as.matrix(t(c(1:mxd))) #1 cm estimates
         nj<- max(v)
         if (nj > mxd)
         {nj<- mxd}
         yfit<- xfit
-        for (k in 1:nj){
+
+        for(k in 1:nj){
           xd<-xfit[k]
           if (xd< u[1])
           {p<- alfa[1]} else
@@ -239,8 +242,10 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
             {phi=alfa[its+1]-b1[its]*(u[its+1]-v[its])
             p=phi+b1[its]*(xd-v[its])}
           }}
-          yfit[k]=p }
-        if (nj < mxd)
+          yfit[k]=p
+          }
+
+        if(nj < mxd)
         {yfit[,(nj+1):mxd]=NA}
 
         yfit[which(yfit > vhigh)] <- vhigh
@@ -250,33 +255,34 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
         ## Averages of the spline at specified depths
         nd<- length(d)-1  # number of depth intervals
         dl<-d+1     #  increase d by 1
-        for (cj in 1:nd) {
+
+        for(cj in 1:nd){
           xd1<- dl[cj]
           xd2<- dl[cj+1]-1
-          if (nj>=xd1 & nj<=xd2)
-          {xd2<- nj-1
-          yave[st,cj]<- mean(yfit[,xd1:xd2])}
-          else
-          {yave[st,cj]<- mean(yfit[,xd1:xd2])}   # average of the spline at the specified depth intervals
-          yave[st,cj+1]<- max(v)} #maximum soil depth
 
-        ## CALCULATION OF THE ERROR BETWEEN OBSERVED AND FITTED VALUES
+          if(nj>=xd1 & nj<=xd2){
+            xd2<- nj-1
+            yave[st,cj]<- median(yfit[,xd1:xd2])
+          }
+          else{
+            yave[st,cj]<- median(yfit[,xd1:xd2])}   #median of the spline at the specified depth intervals
+          yave[st,cj+1]<- median(v)} #maximum soil depth
+
+        ##Keep the original error of probabilities
         rmse <- sqrt(sum((t(y)-sbar)^2)/n)
-        rmseiqr <- rmse/IQR(y)
+        rmseiqr <- rmse/stats::IQR(y)
         sset[st,1] <- rmse
         sset[st,2] <- rmseiqr
       }
     }
 
-    if (show.progress) { setTxtProgressBar(pb, st)  }
+    if(show.progress){utils::setTxtProgressBar(pb, st)}
   }
-  if (show.progress) {
+  if(show.progress){
     close(pb)
-
   }
 
-
-  ## asthetics for output
+  ## asthetics for output-----------------------------------------------------
   ## yave
   yave<- as.data.frame(yave)
   jmat<- matrix(NA,ncol=1,nrow=length(d))
@@ -288,17 +294,63 @@ catSpline<- function(obj, var.name,  lam = 0.1, d = c(0,5,15,30,60,100,200), vlo
   for (jj in 1:length(jmat)){
     names(yave)[jj]<- jmat[jj]
   }
-  jmat[length(d)]<- as.factor("soil_depth")
+  jmat[length(d)]<- "soil_depth"
+  for (jj in 1:length(jmat)){
+    names(yave)[jj]<- jmat[jj]
+  }
   yave<- cbind(mat_id[,1],yave)
   names(yave)[1]<- "id"
 
-  yave$id = factor(yave$id)
+  # Convert 'id' and 'soil_depth' to factors
+  yave[, "id"] <- as.factor(yave[, "id"])
+  yave[, "soil_depth"] <- as.factor(yave[, "soil_depth"])
 
-  # sset
+  #1D nearest neibor classification
+  closest_value <- function(x, values) {
+    if(is.numeric(x)){
+      values[which.min(abs(values - x))]
+    }
+  }
+
+  # Identify numerical columns by name
+  numColNames <- names(yave)[sapply(yave, is.numeric)]
+
+  # Apply closest_value to each numerical column
+  for (col_name in numColNames) {
+    yave[[col_name]] <- sapply(yave[[col_name]], closest_value,
+                               values = lookup$post,
+                               USE.NAMES = FALSE) # Prevent sapply from adding names to vector elements
+  }
+
+  # Convert the numerical columns to factors based on lookup$Class
+  for (col_name in numColNames) {
+    yave[[col_name]] <- factor(lookup$Class[match(yave[[col_name]], lookup$post)],
+                               levels = lookup$Class) # Explicitly set levels for consistent factors
+  }
+  #dave
+  dave
+  #Match probabilities to class
+  closest_obvs <- sapply(dave$post, function(x) closest_value(as.numeric(x), lookup$post))
+  dave$Obvs <- as.factor(lookup$Class[match(closest_obvs, lookup$post)])
+
+  closest_pred <- sapply(dave$predicted, function(x) closest_value(x, lookup$post))
+  dave$Pred <- factor(lookup$Class[match(closest_pred, lookup$post)],
+                      levels = levels(dave$Obvs))
+
+  dave = dave[, c("id", "top", "bottom", "post", "predicted", "Obvs", "Pred")]
+
+  #1cm preds
+  names(m_fyfit) = gsub("V", "", names(m_fyfit))
+
+  closest_pred <- sapply(m_fyfit, function(x) closest_value(x, lookup$post))
+  m_fyfit <- factor(lookup$Class[match(closest_pred, lookup$post)])
+
+  #sset
   sset<- as.data.frame(sset)
   names(sset)<- c("rmse", "rmseiqr")
 
   # save outputs
-  retval <- list(harmonised=yave, obs.preds = dave, splineFitError=sset ,var.1cm= (m_fyfit), lookup = lookup)
+  retval <- list(harmonised=yave, obs.preds = dave ,var.1cm= t(m_fyfit), lookup = lookup, Error=sset)
   return(retval)
 }
+#END
