@@ -9,24 +9,31 @@ and hope to come out with more datasets after recieving permission.
 #Example: Categorical splines
 
 #install
+
 remotes::install_github("rafikisol/rafikisol")
 
 #Get data
+
 data(Neno)
 
 #Look at data
+
 head(Neno)
 
 #Run spline
+
 spl = catSpline(Neno, class.var = "Class", type = "class", beta = 1, lam = 0.01)
 
 #See harmonised texture classes
+
 spl$harmonised
 
 #See associated uncertainties
+
 spl$uncertainties
 
 #Evaluate spline (Kappa, accuracy, confusion index, etc.)
+
 evalSpline(spl)
 
 #END
