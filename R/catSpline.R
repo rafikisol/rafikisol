@@ -408,3 +408,5 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
     return(retval)
   }
 }
+
+#End
