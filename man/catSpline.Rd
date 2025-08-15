@@ -2,9 +2,10 @@
 % Please edit documentation in R/catSpline.R
 \name{catSpline}
 \alias{catSpline}
+\alias{catSplinecSpline}
 \title{Function for categorical splines}
 \usage{
-catSpline(
+catSplinecSpline(
   obj,
   class.var,
   type = "class",

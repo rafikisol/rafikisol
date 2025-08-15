@@ -1,7 +1,7 @@
 Package: rafikisol
 Type: Package
 Title: rafikisol: Integrating GEE, terra, sf, stars for digital soil mapping.
-Version: 0.1.0
+Version: 0.1.2
 Author: Trevan Flynn
 Maintainer: Trevan Flynn <trevanflynn@rafikisol.com>
 Description: A package to enhance digital soil mapping through GEE and R.

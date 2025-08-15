@@ -27,13 +27,13 @@
 #'
 #'@export
 # Spline fitting for horizon data (Matlab Code converted to R by Brendan Malone)
-catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
+catSplinecSpline <- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(0,5,15,30,60,100,200), vlow = 0, vhigh = 1,show.progress=TRUE){
 
   #load aqp -- helps keep it consistant
   require(aqp)
 
   #calculate differential median
-  softmedian <- function(x, beta = 1) {
+  softmedian <- function(x, beta = beta) {
     # x: Numeric vector
     # beta: Softness parameter (higher beta = closer to true median)
     weights <- exp(-beta * abs(x - median(x)))
@@ -47,16 +47,6 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
     }
   }
 
-  second_value <- function(x, values) {
-    # Calculate absolute differences
-    diffs <- abs(values - x)
-
-    # Find the indices of the two smallest differences
-    closest_indices <- order(diffs)[1:2]
-
-    # Return the second closest value
-    x[closest_indices[2]]
-  }
 
   ###############################################################################
   #get prior probs
@@ -74,7 +64,7 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
   obj = merge(obj, lookup, by = class.var)
 
   aqp::depths(obj) = id ~ top + bottom
-  ##############################################################################
+  #Check data-------------------------------------------------------------------
   if (is(obj,"SoilProfileCollection") == TRUE){
     depthcols = obj@depthcols
     idcol = obj@idcol
@@ -237,7 +227,7 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
         fdub <- pr.mat*t(dim.mat)%*%rinv
         z <- fdub%*%dim.mat+ind
 
-        #solve for the fitted layer means
+        #solve for the fitted layer
         sbar <- solve(z,t(y))
         dave[cnt:(cnt-1+nrow(subs)),5]<- sbar
         cnt<- cnt+nrow(subs)
@@ -250,8 +240,7 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
         gamma <- (b1-b0) / t(2*delta)
         alfa <- sbar-b0 * t(delta) / 2-gamma * t(delta)^2/3
 
-        ###############################################################################################################################################################
-        #Spline fit
+        #Fit Interpolation-------------------------------------------------------------
         xfit<- as.matrix(t(c(1:mxd))) #1 cm estimates
         nj<- max(v)
         if (nj > mxd)
@@ -276,13 +265,13 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
         if(nj < mxd)
         {yfit[,(nj+1):mxd]=NA}
 
-        yfit[which(yfit > vhigh)] <- vhigh
-        yfit[which(yfit < vlow)]  <-vlow
+        yfit[which(yfit > vhigh)] <- vhigh #(shouldnt exceed max(prob)) - extrapolation
+        yfit[which(yfit < vlow)]  <-vlow #(shouldnt be below min(prob))
         m_fyfit[st,]<- yfit
 
-        ## Averages of the spline at specified depths
-        nd<- length(d)-1  # number of depth intervals
-        dl<-d+1     #  increase d by 1
+        ##Softmedian of the spline at specified depths
+        nd<- length(d)-1# number of depth intervals
+        dl<-d+1     #increase depth by 1 cm
 
         for(cj in 1:nd){
           xd1<- dl[cj]
@@ -311,7 +300,7 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
     close(pb)
   }
 
-  ## asthetics for output-----------------------------------------------------
+  ## asthetics for output-------------------------------------------------------
   ## yave
   yave<- as.data.frame(yave)
   jmat<- matrix(NA,ncol=1,nrow=length(d))
@@ -330,12 +319,12 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
   yave<- cbind(mat_id[,1],yave)
   names(yave)[1]<- "id"
 
-  # Convert 'id' and 'soil_depth' to factors
+  # Convert 'id' and 'soil_depth' to factors (for calculation reasons)
   yave[, "id"] <- as.factor(yave[, "id"])
   yave[, "soil_depth"] <- as.factor(yave[, "soil_depth"])
 
-  numColNames <- names(yave)[sapply(yave, is.numeric)]
-  uncert <- yave
+  numColNames <- names(yave)[sapply(yave, is.numeric)] #only the depth columns
+  uncert <- yave #Original predictions of harmonised depths
 
   # Apply closest_value to each numerical column and get uncertainties
   for (col_name in numColNames) {
@@ -344,8 +333,8 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
                                USE.NAMES = FALSE)
   }
 
-  for (col_name in numColNames) {
-    # mapply returns vector or list; wrap in unlist() to flatten
+  for (col_name in numColNames) {# mapply returns vector or list; wrap in unlist() to flatten
+
     result <- mapply(function(x, y) {
       val <- tryCatch(abs(x - y), error = function(e) NA)
       if (length(val) == 0 || is.null(val)) NA else val
@@ -355,29 +344,43 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
   }
   #if probabilities desired-------------------------------------------------------
   if(type == "probs"){
+
+    #Convert soil_depth to numeric
+    yave[, "soil_depth"] = as.numeric(yave[, "soil_depth"])
+
+    #1cm preds
+    fit <- as.data.frame(t(m_fyfit)) #Put into a data frame in right direction
+    names(fit) <- gsub("V", "", names(fit)) #Put names without V
+
     # sset
     sset<- as.data.frame(sset)
     names(sset)<- c("rmse", "rmseiqr")
 
-    # save outputs
+    ##save outputs
     retval <- list(harmonised=yave,
                    uncertainty = uncert,
                    obs.preds=dave,
-                   splineFitError=sset ,
-                   var.1cm=t(m_fyfit))
-    return(retval)}
+                   var.1cm= fit,
+                   looup = lookup,
+                   splineFitError=sset
+                   )
+    return(retval)
+  }
 
-
+  #Classifications dataset-----------------------------------------------------
   if(type == "class"){
-    # Identify numerical columns by name
 
-    # Convert the numerical columns to factors based on lookup$Class
+    ##Classify harmonised depths
+    # Convert the numerical columns (probabilities) to factors based on lookup$Class
     for (col_name in numColNames) {
       yave[[col_name]] <- factor(lookup$Class[match(yave[[col_name]], lookup$post)],
-                                 levels = lookup$Class) # Explicitly set levels for consistent factors
+                                 levels = lookup$Class)
     }
-    #dave
-    dave
+
+    #Convert soil_depth to numeric - after classification
+    yave[, "soil_depth"] = as.numeric(yave[, "soil_depth"])
+
+    ##Obvs verses predictions
     #Match probabilities to class
     closest_obvs <- sapply(dave$post, function(x) closest_value(as.numeric(x), lookup$post))
     dave$Obvs <- as.factor(lookup$Class[match(closest_obvs, lookup$post)])
@@ -386,25 +389,30 @@ catSpline<- function(obj, class.var, type = "class", beta = 1, lam = 0.1, d = c(
     dave$Pred <- factor(lookup$Class[match(closest_pred, lookup$post)],
                         levels = levels(dave$Obvs))
 
-    dave = dave[, c("id", "top", "bottom", "post", "predicted", "Obvs", "Pred")]
+    #get only columns needed
+    dave <- dave[, c("id", "top", "bottom", "post", "predicted", "Obvs", "Pred")]
 
-    #1cm preds
-    names(m_fyfit) = gsub("V", "", names(m_fyfit))
+    ##1cm preds
+    fit <- as.data.frame(t(m_fyfit)) #get into data frame in downward direction
+    names(fit) <- gsub("V", "", names(fit)) #make names profile numbers 1...n
 
-    closest_pred <- sapply(m_fyfit, function(x) closest_value(x, lookup$post))
-    m_fyfit <- factor(lookup$Class[match(closest_pred, lookup$post)])
+    #Classify predictions
+    for(i in seq_along(names(fit))){
+      vals = sapply(fit[[i]], function(x) closest_value(x, lookup$post))
+      fit[[i]] = as.factor(lookup$Class[match(vals, lookup$post)])
+    }
 
-    #sset
+    #errors of the of observed and fitted probabilities
     sset<- as.data.frame(sset)
     names(sset)<- c("rmse", "rmseiqr")
 
     # save outputs
-    retval <- list(harmonised=yave,
+    retval <- list(harmonised = yave,
                    uncertainty = uncert,
-                   obs.preds = dave ,
-                   var.1cm= t(m_fyfit),
+                   obs_preds = dave ,
+                   var_1cm = fit,
                    lookup = lookup,
-                   Error=sset)
+                   error = sset)
     return(retval)
   }
 }
