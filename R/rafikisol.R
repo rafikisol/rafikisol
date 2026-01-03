@@ -12,6 +12,7 @@
 #'
 #' @param covar The covariates to be used in the model (should be fine resolution).
 #' @param response The image with the data to be sampled on (should be coarse resolution).
+#' @param label Character of response being downloaded, default = bandNames().
 #' @param model A character of which ee model to be used being random forest ("rf"),
 #' gradient tree boost ("gtb"), cart ("cart") or support vector machines ("svm").
 #' @param stype Character of sampling type to perform either stratified ("s") or random ("r").
@@ -29,8 +30,10 @@
 #' @export
 
 #function
-rafikisol = function(covar, response, scale = covar$projection()$nominalScale(),
-                    model = NULL, stype = 'r', sampNum = 100, boot = 10,...){
+rafikisol = function(covar, response, label = response$bandNames()$getInfo(),
+                     scale = covar$projection()$nominalScale(),
+                    model = NULL, stype = 'r', region = covar$geometry(),
+                    sampNum = 100, boot = 10,...){
 
   #list (only for bootstrap)
   resSamp = list()
@@ -62,6 +65,7 @@ rafikisol = function(covar, response, scale = covar$projection()$nominalScale(),
         classBand = label,
         scale = response$projection()$nominalScale(),
         region = region,
+        dropNulls = T,
         geometries = T,
         seed = i)
     }
@@ -69,7 +73,7 @@ rafikisol = function(covar, response, scale = covar$projection()$nominalScale(),
     #random sampling
     else{
       #sample large raster
-      resSamp[[i]] = response$int()$sample(
+      resSamp[[i]] = response$ceil()$int()$sample(
         region = region,
         numPixels = sampNum,
         dropNulls = T,

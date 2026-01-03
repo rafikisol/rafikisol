@@ -7,9 +7,11 @@
 rafikisol(
   covar,
   response,
+  label = response$bandNames()$getInfo(),
   scale = covar$projection()$nominalScale(),
   model = NULL,
   stype = "r",
+  region = covar$geometry(),
   sampNum = 100,
   boot = 10,
   ...
@@ -19,6 +21,8 @@ rafikisol(
 \item{covar}{The covariates to be used in the model (should be fine resolution).}
 
 \item{response}{The image with the data to be sampled on (should be coarse resolution).}
+
+\item{label}{Character of response being downloaded, default = bandNames().}
 
 \item{scale}{The scale at which to perform analysis. Defaults to scale of covar.}
 
