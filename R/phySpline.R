@@ -4,17 +4,14 @@
 #'
 #'@author Trevan Flynn
 #'@description
-#'Physics-informed spline that is fully analytically solvable and continuous in its 3 loss functions (data fidelity/mass-preservation, smoothing term, and physics term)
-#'will interpolate "unseen" transition classes and not just the modal class. Informs class behavior and only assigns classes after all calculations have been performed.
-#'Can run splines on a massive amount of soil data relatively fast and extract information that is scientific, not just algorithmic. !!BETA VERSION!!
+#'Physics-informed spline that is fully analytically solvable and infinitely differentiable. The spline self-regulates of the cumulative mass of the overlaying horizons
+#'stiffening the spline with depth yet the lambda has a large influence and can never over constrain the spline. The function is still in the Beta version
 #'
 #'@param df a data frame with at least 4 columns with the first 3 named c("id","top","bottom"). The id column should have at least
 #'@param class.var the character of the class to harmonise
 #'@param lam the smoothing term [0, 1]
-#'@param alpha the physics-informed term [0, 1]
-#'@param d the vector to harmonise the soil depths to
+#'@param d the vector of soil depths intervals to harmonise to.
 #'@param order the latent ordering to map the classes to (default = class level order)
-#'@param gthreshold the threshold of which the physics-informed loss function will start being applied
 #'@param mode either "classification" or "continuous" for classification class.var must be a factor for now
 #'
 #'@return A list with 3 harmonised data frames with the classes, latent classes and uncertainties for each interval, a data frame of observations vs interpolations
