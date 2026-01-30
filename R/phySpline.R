@@ -1,4 +1,4 @@
-#'@title analytically Solvable Physics-informed Categorical Depth Function
+#'@title Physics-informed Categorical and Continuous Depth Function
 #'
 #'@name phySpline
 #'
