@@ -5,7 +5,9 @@
 #'@author Trevan Flynn
 #'@description
 #'Physics-informed spline that is fully analytically solvable and infinitely differentiable. The spline self-regulates of the cumulative mass of the overlaying horizons
-#'stiffening the spline with depth yet the lambda has a large influence and can never over constrain the spline. The function is still in the Beta version
+#'stiffening the spline with depth yet the lambda has a large influence and can never over constrain the spline. The spline fits the values by minimising the jacobian
+#'energy held in the soil vertical gradients giving meaning to the curve. Since everything is a continuous function its extremely efficient and difficult to over constrain
+#'however, it is still in the beta version.
 #'
 #'@param df a data frame with at least 4 columns with the first 3 named c("id","top","bottom"). The id column should have at least
 #'@param class.var the character of the class to harmonise
@@ -105,12 +107,11 @@ phySpline <- function(df,
         A[j, (3*j-2):(3*j)] <- c(1, h/2, h^2/3)
       }
 
-      # Function for Solver: Define the Refined Euler Resistance Process
+      # Function for Solver: Define the Refined Euler Resistance Process (increases speed)
       calc_stiffness <- function(z_top, z_bot, k) {
         h_norm <- z_bot - z_top
         # Numerical safety: If horizon is ultra-thin, return the point-stiffness
         if (h_norm < 1e-6) return(exp(k * z_top))
-
         # The Integral Mean: Captures the total resistance across the layer
         return((exp(k * z_bot) - exp(k * z_top)) / (k * h_norm))
       }
@@ -119,32 +120,19 @@ phySpline <- function(df,
       z_bot_norm <- cumsum(hi) / H
       z_top_norm <- c(0, z_bot_norm[-n])
       k <- exp(1)
-
+      
+      # regularisation matrix - collapses to Jacobian energy holomorphic integral
       R <- matrix(0, 3*n, 3*n)
-
+      
       for(j in seq_len(n)) {
         idx <- (3*j-2):(3*j)
         h <- hi[j]
-
-        # --- APPLY THE PROCESS ---
-        if(j == 1) {
-          # Top Anchor: Ensure surface flexibility (Anchored to z=0)
-          gw <- exp(k * z_top_norm[j])
-        } else if(j == n) {
-          # Bottom Anchor: Ensure max stiffness (Anchored to z=Htot)
-          gw <- exp(k * z_bot_norm[j])
-        } else {
-          # Transition: Use the Refined Integral Mean process
-          gw <- calc_stiffness(z_top_norm[j], z_bot_norm[j], k)
-        }
-
-        # 3. Build the Dirichlet Penalty Matrix
         # (Penalizes first derivative weighted by squared stiffness)
         R_block <- matrix(c(0, 0, 0,
                             0, h, h^2,
                             0, h^2, 4/3*h^3), 3, 3, byrow = TRUE)
-
-        R[idx, idx] <- (gw^2) * R_block
+        # calculate the integral on the integral collapsed on the inginite decay
+        R[idx, idx] <- calc_stiffness(z_top_norm[j], z_bot_norm[j], k)^2 * R_block
       }
       # Continuity constraints
       Gc <- matrix(0, 2*(n-1), 3*n)
@@ -185,11 +173,11 @@ phySpline <- function(df,
         for(j in 1:n) b[(3*j-2):(3*j)] <- c(y[j],0,0)
         b
       })
-
+      # tells if we couldnt solve analytically                   
       method_used <- if(exists("solve_beta")) "analytical" else "numeric"
 
       n_segments <- length(beta) / 3
-
+      # buld coefficient matrix                   
       cf_all <- data.frame(
         alpha  = beta[seq(1, 3 * n_segments, 3)],
         b      = beta[seq(2, 3 * n_segments, 3)],
@@ -197,10 +185,11 @@ phySpline <- function(df,
         top    = u[1:n_segments],    # Crucial: slice to match n_segments
         bottom = v[1:n_segments]     # Crucial: slice to match n_segments
       )
-
+      # fit the predictions from coefficients
       pred <- cf_all$alpha + cf_all$b*hi/2 + cf_all$gamma*hi^2/3
 
     } else {
+      # if just one horizon
       cf_all <- data.frame(alpha=y,b=0,gamma=0,top=u,bottom=v,is_ghost=FALSE)
       pred <- y; beta <- rep(0,3*n)
       method_used <- "single"
@@ -210,6 +199,7 @@ phySpline <- function(df,
     full_coeff_list[[p]] <- cf_all
     coeff_list[[p]] <- cf_all
 
+    # Get RMSE of residuals                    
     real <- !prof$is_ghost
     rmse <- sqrt(mean((y[real]-pred[real])^2, na.rm=TRUE))
     fit_errors$rmse[p] <- rmse
@@ -221,17 +211,18 @@ phySpline <- function(df,
         max.col(-abs(outer(pred, lookup$numeric,"-")), ties.method="first")
       ]
     }
-
+    # fitted values with latent residuals                     
     obs_pred_list[[p]] <- data.frame(
       id = names(profiles)[p],
       top = u[real],
       bottom = v[real],
+      y = y[real], # want exact latent values
       obs = if(mode=="classification") prof[[class.var]][real] else y[real],
       pred = if(mode=="classification") pred_class[real] else pred[real],
       value = pred[real],
       resid = y[real]-pred[real]
     )
-
+    # Tells if analytical, over-constrained and errors
     diag_list[[p]] <- data.frame(
       id = names(profiles)[p],
       method_used = method_used,
@@ -245,11 +236,11 @@ phySpline <- function(df,
   if(show.progress) close(pb)
 
   # ------------------------------------------------------------
-  # 4. Harmonisation
+  # 4. Harmonisation - integrate to get values of of classes and uncertainty
   # ------------------------------------------------------------
   harmonised <- data.frame(id=names(profiles))
   uncert <- data.frame(id=names(profiles))
-
+  
   for(i in seq_len(length(d)-1)){
     z1 <- d[i]; z2 <- d[i+1]; nm <- paste0(z1,"-",z2,"cm")
 
@@ -274,7 +265,7 @@ phySpline <- function(df,
       harmonised[[nm]] <- vals
     }
   }
-
+  # add soil depth to harmonised data frames
   harmonised$soil_depth <- sapply(coeff_list, function(cf) max(cf$bottom))
   uncert$soil_depth <- harmonised$soil_depth
 
